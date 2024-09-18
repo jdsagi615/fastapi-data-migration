@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.sqltypes import Integer, String, DateTime
 from db.models import Base, Department, Job, Employee  # Import models
 from db.session import engine,SessionLocal
-from queries import HIRED_EMPLOYEES_2021
+from queries import HIRED_EMPLOYEES_2021,HIRED_EMPLOYEES_OVER_AVG_2021
 import pandas as pd
 import numpy as np
 import os
@@ -173,6 +173,11 @@ def start_application():
     @app.get("/get_hired_employees_2021")
     async def get_hired_employees_2021():
         query = HIRED_EMPLOYEES_2021  
+        return execute_query(query, engine)
+    
+    @app.get("/get_hired_employees_over_AVG_2021")
+    async def get_hired_employees_over_avg_2021():
+        query = HIRED_EMPLOYEES_OVER_AVG_2021 
         return execute_query(query, engine)
 
     return app

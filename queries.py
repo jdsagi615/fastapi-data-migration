@@ -35,3 +35,24 @@ GROUP BY
     department, job
 ORDER BY
     department, job;"""
+
+HIRED_EMPLOYEES_OVER_AVG_2021="""SELECT 
+    b.id AS id,
+    b.department AS department,
+    COUNT(a.id) AS hired
+FROM hired_employees a
+LEFT JOIN departments b ON a.department_id = b.id
+WHERE strftime('%Y', a.datetime) = '2021'
+GROUP BY b.id, b.department
+HAVING COUNT(a.id) > (
+    -- Subconsulta para calcular el promedio de empleados contratados por departamento en 2021
+    SELECT AVG(hired_count)
+    FROM (
+        SELECT COUNT(a2.id) AS hired_count
+        FROM hired_employees a2
+        WHERE strftime('%Y', a2.datetime) = '2021'
+        GROUP BY a2.department_id
+    )
+)
+ORDER BY hired DESC;
+"""
