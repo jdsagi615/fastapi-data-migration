@@ -1,6 +1,6 @@
 ## fastapi-data-migration
 
-# Funcionalities
+# Overview of API Functionality and Features
 
 This Local REST API is created in the context of data migration to accomplish:
 1. Receive historical data from CSV files
@@ -37,10 +37,16 @@ Note:Local REST API
 | `Globant’s Data Engineering Coding Challenge.pdf` | PDF file with challenge description.                        |
 
 
+# Available Enpoints
+/upload_csv: Upload a CSV file to the specified table in DB ( name of the table must be specified )
+/get_hired_employees_2021: Number of employees hired for each job and department in 2021 divided by quarter
+//get_hired_employees_over_AVG_2021: List of ids, name and number of employees hired of each department that hired more
+employees than the mean of employees hired in 2021 for all the departments
+
+
 # How to use the app
 
 FastAPI povides an automatic interactive API documentation in wich you can use the app: 
-
 
 http://localhost:8000/docs#/
 
@@ -48,9 +54,30 @@ http://localhost:8000/docs#/
 ![alt text](image.png)
 
 
+# Section 1 Use of upload_csv
 
+![alt text](image-1.png)
 
+Results 
 
+![alt text](image-2.png)
+
+![alt text](image-3.png)
+
+![alt text](image-4.png)
+
+# Section 2  Use of get_hired_employees_2021
+
+![alt text](image-5.png)
+
+Results 
+
+![alt text](image-6.png)
+
+# Section 2  Use of get_hired_employees_over_avg_2021
+Results
+
+![alt text](image-7.png)
 
 
 # Documentation 
