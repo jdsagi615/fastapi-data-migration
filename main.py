@@ -13,13 +13,28 @@ UPLOAD_DIR = "historical_data"
 # Ensure the upload directory exists
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+SCHEMAS = {
+    "departments": {0: 'int64', 1: 'object'},
+    "jobs": {0: 'int64', 1: 'object'},
+    "hired_employees": {0: 'int64', 1: 'object', 2: 'object', 3: 'int64', 4: 'int64'}
+}
+
 def create_tables(): 
     """Create all tables in the database."""
     Base.metadata.create_all(bind=engine)
 
 def read_csv(file_path: str):
-    """Read a CSV file without headers into a DataFrame."""
-    return pd.read_csv(file_path, header=None)  # No headers in the CSV
+    """Read a CSV file into a DataFrame, ensuring all columns are read as strings."""
+    return pd.read_csv(file_path, header=None, dtype=str)
+
+def cast_dataframe_to_schema(data, schema):
+    """Cast DataFrame columns to the types specified in the schema."""
+    for col_index, col_type in schema.items():
+        if col_type == 'int64':
+            data[col_index] = pd.to_numeric(data[col_index], errors='raise')
+        elif col_type == 'object':
+            data[col_index] = data[col_index].astype(str)
+    return data
 
 def extract_column_types(model):
     """Extract expected column types from an SQLAlchemy model."""
@@ -35,8 +50,8 @@ def extract_column_types(model):
             column_types.append(str(column.type))  # Handle other types as strings
     return column_types
 
-def validate_data_types(data, expected_types):
-    """Validate the data types of CSV columns against expected SQLAlchemy types."""
+def validate_csv_structure(data, expected_types):
+    """Validate column count of CSV columns against SQLAlchemy."""
     if len(data.columns) != len(expected_types):
         raise HTTPException(status_code=400, detail="Column count mismatch between CSV and database table.")
     
@@ -45,6 +60,24 @@ def validate_data_types(data, expected_types):
         actual_type = data.iloc[:, i].dtype  # Get the data type of the i-th column
         if str(actual_type) != expected_type:
             raise HTTPException(status_code=400, detail=f"Column {i+1} has incorrect type. Expected {expected_type}, got {actual_type}.")
+        
+def remove_empty_rows(data):
+    """Remove rows with missing values and return the IDs of rows that were removed."""
+    # Identify rows with missing values
+    df_nulls = data[data.isnull().any(axis=1)]
+    
+    # Extract IDs of rows with missing values (assuming the first column is 'id')
+    if not df_nulls.empty:
+        id_nulls = df_nulls[0].to_list()  # Assuming first column (index 0) is the 'id'
+        print(f"Rows with missing values were found and removed. IDs: {id_nulls}")
+    else:
+        id_nulls = []
+
+    # Remove rows with missing values
+    data.dropna(inplace=True)
+
+    # Return cleaned data and the IDs of the removed rows
+    return data, id_nulls
 
 def insert_data(session, table_class, data, column_mapping):
     """Insert data into a specified table using column mapping."""
@@ -64,41 +97,58 @@ def start_application():
 
     @app.post("/upload/")
     async def upload_csv(table: str, file: UploadFile = File(...)):
-        """Handle CSV file upload and validate data types."""
-        # Map table names to SQLAlchemy models and their column mappings
-        table_classes = {
-            "departments": (Department, ["id", "department"]),  # Mapping for departments table
-            "jobs": (Job, ["id", "job"]),                      # Mapping for jobs table
-            "hired_employees": (Employee, ["id", "name", "datetime", "department_id", "job_id"])  # Mapping for hired_employees table
-        }
+        """Upload a CSV file to the specified table."""
+        if table not in ["departments", "jobs", "hired_employees"]:
+            raise HTTPException(status_code=400, detail="Invalid table name.")
 
-        # Check if the table name is valid
-        if table not in table_classes:
-            raise HTTPException(status_code=400, detail="Table not found")
-
-        # Get the table class and column mapping
-        table_class, column_mapping = table_classes[table]
-
-        # Save the uploaded file
+        # Save the uploaded file locally
         file_location = os.path.join(UPLOAD_DIR, file.filename)
         with open(file_location, "wb") as f:
-            f.write(await file.read())
+            f.write(file.file.read())
 
-        # Read the CSV without headers
-        data = read_csv(file_location)
+        # Read the CSV file
+        df = read_csv(file_location)
 
-        # Extract the expected column types from the SQLAlchemy model
-        expected_types = extract_column_types(table_class)
+        # Remove rows with missing values before validation
+        df_cleaned, removed_ids = remove_empty_rows(df)
 
-        # Validate the CSV data types (no need to check column names)
-        validate_data_types(data, expected_types)
+        # Select the correct SQLAlchemy model based on the table name
+        table_classes = {
+            "departments": Department,
+            "jobs": Job,
+            "hired_employees": Employee
+        }
 
-        # Insert data into the database
-        with SessionLocal() as session:
-            insert_data(session, table_class, data, column_mapping)
+        schemas = SCHEMAS[table]
+        # Get the expected column types from the selected model
+        expected_types = extract_column_types(table_classes[table])
 
-        return {"status": "success", "filename": file.filename}
+        # Cast df_cleaned according to the schema
+        df_cleaned = cast_dataframe_to_schema(df_cleaned, schemas)
 
-    return app 
+        # Validate the data types in the CSV file (after removing empty rows)
+        validate_csv_structure(df_cleaned, expected_types)
+
+        # Column mapping based on the table
+        column_mapping = {
+            "departments": {0: 'id', 1: 'department'},
+            "jobs": {0: 'id', 1: 'job'},
+            "hired_employees": {0: 'id', 1: 'name', 2: 'datetime', 3: 'department_id', 4: 'job_id'}
+        }
+
+        # Insert the cleaned data into the database
+        session = SessionLocal()
+        try:
+            insert_data(session, table_classes[table], df_cleaned, column_mapping[table])
+        except Exception as e:
+            session.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            session.close()
+
+        # Return success message and list of removed rows (if any)
+        return {"status": "success", "removed_rows_ids": removed_ids}
+
+    return app
 
 app = start_application()
