@@ -51,7 +51,7 @@ FastAPI povides an automatic interactive API documentation in wich you can use t
 http://localhost:8000/docs#/
 
 
-![alt text](image.png)
+![alt text](img/image.png)
 
 
 # Section 1 Use of upload_csv
