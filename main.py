@@ -5,6 +5,7 @@ from sqlalchemy.sql.sqltypes import Integer, String, DateTime
 from db.models import Base, Department, Job, Employee  # Import models
 from db.session import engine,SessionLocal
 import pandas as pd
+import numpy as np
 import os
 
 # Directory where CSV files will be saved
@@ -79,16 +80,23 @@ def remove_empty_rows(data):
     # Return cleaned data and the IDs of the removed rows
     return data, id_nulls
 
-def insert_data(session, table_class, data, column_mapping):
-    """Insert data into a specified table using column mapping."""
-    records = data.to_dict(orient='records')
-    
-    for record in records:
-        mapped_record = {column_mapping[i]: value for i, value in record.items()}  # Map each column to the correct field name
-        obj = table_class(**mapped_record)  # Create a new model instance
-        session.add(obj)
-    
-    session.commit()
+def split_dataframe(df, batch_size=1000):
+    """Split a DataFrame into batches."""
+    return np.array_split(df, np.ceil(len(df) / batch_size))
+
+def insert_data_in_batches(session, table_class, data_batches, column_mapping):
+    """Insert data in batches into the database."""
+    for batch in data_batches:
+        try:
+            records = batch.to_dict(orient='records')
+            for record in records:
+                mapped_record = {column_mapping[i]: value for i, value in record.items()}
+                obj = table_class(**mapped_record)
+                session.add(obj)
+            session.commit()  # Commit the transaction
+        except Exception as e:
+            session.rollback()  # Rollback in case of error
+            raise HTTPException(status_code=500, detail=str(e))
 
 def start_application():
     """Initialize the FastAPI application."""
@@ -136,13 +144,16 @@ def start_application():
             "hired_employees": {0: 'id', 1: 'name', 2: 'datetime', 3: 'department_id', 4: 'job_id'}
         }
 
+        # Split the data into batches
+        data_batches = split_dataframe(df_cleaned)
+
         # Insert the cleaned data into the database
         session = SessionLocal()
         try:
-            insert_data(session, table_classes[table], df_cleaned, column_mapping[table])
-        except Exception as e:
+            insert_data_in_batches(session, table_classes[table], data_batches, column_mapping[table])
+        except HTTPException as e:
             session.rollback()
-            raise HTTPException(status_code=500, detail=str(e))
+            raise e
         finally:
             session.close()
 
