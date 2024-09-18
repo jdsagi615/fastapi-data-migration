@@ -1,9 +1,10 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException,Response
 from sqlalchemy import create_engine, Column, Integer, String, ForeignKey,inspect
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.sqltypes import Integer, String, DateTime
 from db.models import Base, Department, Job, Employee  # Import models
 from db.session import engine,SessionLocal
+from queries import HIRED_EMPLOYEES_2021
 import pandas as pd
 import numpy as np
 import os
@@ -97,6 +98,15 @@ def insert_data_in_batches(session, table_class, data_batches, column_mapping):
         except Exception as e:
             session.rollback()  # Rollback in case of error
             raise HTTPException(status_code=500, detail=str(e))
+        
+def execute_query(query: str, engine) -> pd.DataFrame:
+    """
+    Execute a SQL query and return results as a DataFrame.
+    Args:
+        query (str): SQL query to execute.
+    """
+    df = pd.read_sql(query, engine)
+    return Response(df.to_json(orient="records"), media_type="application/json")   
 
 def start_application():
     """Initialize the FastAPI application."""
@@ -159,6 +169,11 @@ def start_application():
 
         # Return success message and list of removed rows (if any)
         return {"status": "success", "removed_rows_ids": removed_ids}
+    
+    @app.get("/get_hired_employees_2021")
+    async def get_hired_employees_2021():
+        query = HIRED_EMPLOYEES_2021  
+        return execute_query(query, engine)
 
     return app
 
